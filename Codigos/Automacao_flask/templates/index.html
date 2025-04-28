@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executar Scripts</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        select, input, button { margin: 10px; padding: 10px; }
+        textarea { width: 90%; height: 500px; }
+        .descricao { font-size: 0.9em; color: #555; margin-top: -5px; }
+    </style>
+</head>
+<body>
+    <h2>Arquitetura para automação de configurações de rede utilizando Infraestrutura como Código (IaC)</h2>
+    
+    <label for="program">Escolha um programa:</label>
+    <select id="program">
+        <option value="">Selecione...</option>
+        {% for name in programs %}
+            <option value="{{ name }}">{{ name }}</option>
+        {% endfor %}
+    </select>
+    
+    <div id="input_fields"></div>
+    
+    <button onclick="executeScript()">Executar</button>
+    <!-- <button onclick="stopScript()">Parar Execução</button> -->
+    </br>
+    
+    <textarea id="output" readonly></textarea>
+
+    <script>
+        let session_id = Math.random().toString(36).substr(2, 9);
+        let socket = io();
+
+        // Converte a variável Flask em JSON válido no JavaScript
+        let params = JSON.parse('{{ programs | tojson | safe }}');
+
+        // Definições de descrições personalizadas para cada parâmetro
+        let descriptions = {
+            "site_ip": "ID do Site no CMDB no formato: 0000. Ou o endereço IP do equipamento.",
+            "end_mac": "Formatos suportados: XXXXXX-XXXXXX, XXXX-XXXX-XXXX ou XX-XX-XX-XX-XX-XX"
+        };
+
+        document.getElementById("program").addEventListener("change", function() {
+            let selected = this.value;
+            let inputDiv = document.getElementById("input_fields");
+            inputDiv.innerHTML = "";
+
+            if (params[selected]) {
+                params[selected][1].forEach(param => {
+                    let inputField = document.createElement("input");
+                    inputField.type = "text";
+                    inputField.id = param;
+                    inputField.placeholder = param;
+
+                    let description = document.createElement("p");
+                    description.className = "descricao";
+                    description.innerHTML = descriptions[param] || "";
+
+                    inputDiv.appendChild(inputField);
+                    inputDiv.appendChild(description);
+                });
+            }
+        });
+
+        function executeScript() {
+            document.getElementById("output").value = "";
+
+            let program = document.getElementById("program").value;
+            let paramsData = {};
+            document.querySelectorAll("#input_fields input").forEach(input => {
+                paramsData[input.id] = input.value;
+            });
+
+            socket.emit("execute_script", { session_id, program, params: paramsData });
+        }
+
+        function stopScript() {
+            socket.emit("stop_script", { session_id });
+        }
+
+        socket.on("output", function(data) {
+            if (data.session_id === session_id) {
+                document.getElementById("output").value += data.data;
+            }
+        });
+
+        socket.on("open_new_tab", function(data) {
+            window.open(data.url, "_blank");
+        });
+    </script>
+</body>
+</html>

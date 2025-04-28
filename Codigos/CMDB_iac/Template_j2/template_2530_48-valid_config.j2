@@ -1,0 +1,131 @@
+{# ......................................................... #}
+{# CONFIGURACAO COMUNS E HOSTNAME #}
+{# ......................................................... #}
+hostname "{{nome}}"
+console idle-timeout 600
+console idle-timeout serial-usb 600
+time timezone -180
+spanning-tree
+{# ......................................................... #}
+{# INFORMACAO DAS INTERFACES EGDE #}
+{# ......................................................... #}
+{% for interface_id, interface_data in interfaces.items() %}
+    {% if "UPLINK" in interface_data.descricao or  "RUCKUS" in interface_data.descricao or  "DERIVACAO" in interface_data.descricao%}
+    {% else %}
+spanning-tree {{ interface_id }} admin-edge-port
+    {% endif %}
+{% endfor %}
+{# ......................................................... #}
+{# CONFIGURACAO COMUNS E GATEWAY IPV4 #}
+{# ......................................................... #}
+spanning-tree force-version rstp-operation
+ip default-gateway {{ ipv4_gateway }}
+ip ssh filetransfer
+ntp server ==ENDERECO_IP==
+snmp-server community "public" unrestricted
+{# ......................................................... #}
+{# CONFIGURACAO DAS INTERFACES #}
+{# ......................................................... #}
+{% for interface_id, interface_data in interfaces.items() %}
+interface {{ interface_id }}
+    {% if interface_data.habilitada == false %}
+   disable
+    {% endif %}
+    {% if interface_data.descricao|length > 0 %}
+   name "{{ interface_data.descricao }}"
+        {% if "UPLINK" in interface_data.descricao %}
+   dhcp-snooping trust
+   dhcpv6-snooping trust
+        {% endif %}
+        {% if "UPLINK" in interface_data.descricao or  "RUCKUS" in interface_data.descricao or  "DERIVACAO" in interface_data.descricao%}
+   rate-limit bcast in percent 5
+   rate-limit mcast in percent 5
+   rate-limit unknown-unicast in percent 5
+        {% else %}
+   rate-limit bcast in percent 1
+   rate-limit mcast in percent 1
+   rate-limit unknown-unicast in percent 1
+        {% endif %}
+    {% else %}
+   rate-limit bcast in percent 1
+   rate-limit mcast in percent 1
+   rate-limit unknown-unicast in percent 1
+    {% endif %}
+    {% if interface_data.tagged_vlan_id %}
+   tagged vlan {{ interface_data.tagged_vlan_id | join(',') }}
+    {% endif %}
+    {% if interface_data.untag_vlan_id is defined %}
+   untagged vlan {{ interface_data.untag_vlan_id }}
+    {% else %}
+        {% if not interface_data.tagged_vlan_id %}
+   untagged vlan 1
+        {% endif %}
+    {% endif %}
+    {% if "UPLINK" in interface_data.descricao or  "RUCKUS" in interface_data.descricao or  "DERIVACAO" in interface_data.descricao%}
+    {% else %}
+   spanning-tree admin-edge-port
+    {% endif %}
+   exit
+{% endfor %}
+{# ......................................................... #}
+{# CONFIGURACAO DAS VLANS #}
+{# ......................................................... #}
+vlan 1
+   name "DEFAULT_VLAN"
+   ip address dhcp-bootp
+   exit
+{% for vl in vlans %}
+{{ vlans[vl].nome }}
+   name "{{ vlans[vl].descricao }}"
+    {% if vlans[vl].ipv4_address is defined %}
+   ip address {{ vlans[vl].ipv4_address }} {{ vlans[vl].ipv4_address_mascara }}
+    {% else %}
+   no ip address
+    {% endif %}
+    {% if vlans[vl].ipv6_address is defined %}
+   ipv6 address {{ vlans[vl].ipv6_address }}
+    {% endif %}
+   exit
+{% endfor %}
+{# ......................................................... #}
+{# CONFIGURACAO COMUNS E PATRIMONIO #}
+{# ......................................................... #}
+dhcp-snooping
+no dhcp-snooping option 82
+dhcp-snooping option 82 untrusted-policy keep
+dhcp-snooping vlan 1-4000
+banner motd "
+*************************************************
+|  UNIVERSIDADE FEDERAL DO RIO GRANDE DO NORTE  |
+| SUPERINTENDENCIA  DE TECNOLOGIA DA INFORMACAO |
+|  -------------------------------------------  |
+|          DIRETORIA DE INFRAESTRUTURA          |
+|                                               |
+|  ###########################################  |
+|             TOMBO DO EQUIPAMENTO              |
+|                                               |
+|                  {{ patrimonio }}                   |
+|  ###########################################  |
+|                                               |
+*************************************************"
+logging ==ENDERECO_IP==
+no telnet-server
+snmpv3 enable
+snmpv3 restricted-access
+snmpv3 group managerpriv user "==USER_SNMP==" sec-model ver3
+snmpv3 targetaddress "traphost.==USER_SNMP==.==ENDERECO_IP==" params "traphost.==USER_SNMP==.==ENDERECO_IP==" ==ENDERECO_IP== taglist "TrapHost"
+snmpv3 params "traphost.==USER_SNMP==.==ENDERECO_IP==" user "==USER_SNMP==" sec-model ver3 message-processing ver3 priv
+snmpv3 user "==USER_SNMP=="
+allow-unsupported-transceiver
+no tftp client
+no tftp server
+no dhcp config-file-update
+no dhcp image-file-update
+no dhcp tr69-acs-url
+aruba-central disable
+dhcpv6-snooping
+dhcpv6-snooping vlan 1-4000
+activate software-update disable
+activate provision disable
+password manager
+password operator
